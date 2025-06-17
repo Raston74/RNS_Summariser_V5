@@ -27,7 +27,6 @@ if os.environ.get("HF_SPACE_ID"):
 import streamlit as st
 import json
 from openai import OpenAI
-from dotenv import load_dotenv
 from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.oxml.ns import qn
@@ -35,10 +34,9 @@ from docx.oxml import OxmlElement
 from datetime import datetime
 from io import BytesIO
 
-# --- Load OpenAI credentials ---
-load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
-project_id = os.getenv("OPENAI_PROJECT_ID")
+# --- Load OpenAI credentials from Streamlit secrets ---
+api_key = st.secrets["OPENAI_API_KEY"]
+project_id = st.secrets["OPENAI_PROJECT_ID"]
 MODEL = "gpt-4o"
 
 SECTORS = [
