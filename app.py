@@ -58,6 +58,8 @@ def format_summary(company, summary_text):
         dash_index = summary_text.find("-")
     if dash_index != -1:
         body = summary_text[dash_index + 1:].strip()
+        if body.startswith("**"):
+            body = body.lstrip("*").strip()
         if body and not body[0].isupper():
             body = body[0].lower() + body[1:]
         return f"**{company}** – {body} (Link)"
@@ -145,6 +147,8 @@ def docx_export(summaries):
                 if dash_index != -1:
                     company_part = item["company"]
                     summary_part = summary_clean[dash_index + 1:].strip()
+                    if summary_part.startswith("**"):
+                        summary_part = summary_part.lstrip("*").strip()
                 else:
                     company_part = item["company"]
                     summary_part = summary_clean
@@ -165,8 +169,8 @@ def today():
 # --- Streamlit UI ---
 st.set_page_config(page_title="RNS Summariser Tool", layout="wide")
 st.title("📈 RNS Summariser Tool (Formatted Output)")
-st.empty()  # Help Streamlit init early
-st.markdown("<!-- Hugging Face healthcheck passthrough -->")  # Ensure Hugging Face healthcheck passes
+st.empty()
+st.markdown("<!-- Hugging Face healthcheck passthrough -->")
 
 if "summaries" not in st.session_state:
     st.session_state.summaries = []
