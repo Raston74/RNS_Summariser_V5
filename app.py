@@ -67,14 +67,17 @@ def format_summary(company, summary_text):
 def generate_summary(rns_text):
     client = get_client()
     prompt = f"""
-Summarise this UK RNS announcement in one bullet point.
+You're a financial journalist. Summarise this UK RNS announcement in one bullet point.
 
-- Start with the company name, followed by an en dash (–)
+Editorial rules:
+- Begin with the company name in **bold**, followed by an en dash (–)
 - Do not repeat the company name in the body
-- Begin the sentence after the dash with a lowercase letter (unless it's a name)
+- Use "has announced" for company-led updates
+- Use "has said that" for third-party or external developments
+- Begin the sentence after the dash in lowercase, unless it's a proper noun
+- Correctly capitalise initials in names (e.g. "J.T. Starzecki")
 - Include only strategic, financial, or operational business facts
-- Keep it to one sentence, max 100 words
-- End with: (Link)
+- End each summary with: (Link)
 
 RNS:
 {rns_text}
