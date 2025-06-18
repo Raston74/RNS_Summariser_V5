@@ -1,4 +1,3 @@
-
 # Hugging Face healthcheck workaround
 import os
 
@@ -69,9 +68,9 @@ def format_summary(company, summary_text):
         body = summary_text[dash_index + 1:].strip()
         if body and not body[0].isupper():
             body = body[0].lower() + body[1:]
-        return f"**{company}** – {body} (Link)"
+        return f"**{company}** – {body}"
     else:
-        return f"**{company}** – {summary_text.strip()} (Link)"
+        return f"**{company}** – {summary_text.strip()}"
 
 def generate_summary(rns_text):
     client = get_client()
@@ -149,7 +148,7 @@ def docx_export(summaries):
 
             for item in entries:
                 para = doc.add_paragraph()
-                cleaned = clean_summary_text(item["summary"].replace(" (Link)", "").strip())
+                cleaned = clean_summary_text(item["summary"])
                 dash_index = cleaned.find("–")
                 if dash_index != -1:
                     company_part = item["company"]
@@ -215,7 +214,7 @@ if st.session_state.summaries:
             st.markdown(f"### {sector}")
             for item in entries:
                 formatted = format_summary(item["company"], item["summary"])
-                st.markdown(formatted)
+                st.markdown(formatted + " [(Link)](" + item["link"] + ")")
                 st.markdown("---")
 
     col1, col2 = st.columns(2)
