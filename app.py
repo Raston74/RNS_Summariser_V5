@@ -1,4 +1,3 @@
-
 # Hugging Face healthcheck workaround
 import os
 
@@ -27,6 +26,7 @@ if os.environ.get("HF_SPACE_ID"):
 
 import streamlit as st
 import json
+import re
 from openai import OpenAI
 from docx import Document
 from docx.shared import Pt, RGBColor
@@ -53,22 +53,28 @@ SECTORS = [
 def get_client():
     return OpenAI(api_key=api_key, project=project_id)
 
+# Clean GPT summary output
+def clean_summary_text(text):
+    # Remove unintended asterisks (bold artifacts)
+    text = text.replace("**", "").strip()
+    # Flatten line breaks
+    text = re.sub(r"\s*\n\s*", " ", text)
+    # Fix missing space in patterns like 2.6billion or 100million
+    text = re.sub(r"(\d)([A-Za-z])", r"\1 \2", text)
+    return text.strip()
+
 def format_summary(company, summary_text):
-    summary_clean = summary_text.replace("(Link)", "").strip()
-    while summary_clean.endswith("*"):
-        summary_clean = summary_clean[:-1].rstrip()
-    dash_index = summary_clean.find("–")
+    summary_text = clean_summary_text(summary_text)
+    dash_index = summary_text.find("–")
     if dash_index == -1:
-        dash_index = summary_clean.find("-")
+        dash_index = summary_text.find("-")
     if dash_index != -1:
-        body = summary_clean[dash_index + 1:].strip()
-        if body.startswith("**"):
-            body = body.lstrip("*").strip()
+        body = summary_text[dash_index + 1:].strip()
         if body and not body[0].isupper():
             body = body[0].lower() + body[1:]
         return f"**{company}** – {body} (Link)"
     else:
-        return f"**{company}** – {summary_clean} (Link)"
+        return f"**{company}** – {summary_text} (Link)"
 
 def generate_summary(rns_text):
     client = get_client()
@@ -93,7 +99,7 @@ RNS:
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
-    return response.choices[0].message.content.strip()
+    return clean_summary_text(response.choices[0].message.content.strip())
 
 def add_hyperlink(paragraph, text, url):
     part = paragraph.part
@@ -146,14 +152,10 @@ def docx_export(summaries):
 
             for item in entries:
                 para = doc.add_paragraph()
-                summary_clean = item["summary"].replace(" (Link)", "").strip()
+                summary_clean = clean_summary_text(item["summary"]).replace(" (Link)", "")
                 dash_index = summary_clean.find("–")
                 if dash_index != -1:
                     summary_part = summary_clean[dash_index + 1:].strip()
-                    while summary_part.endswith("*"):
-                        summary_part = summary_part[:-1].rstrip()
-                    if summary_part.startswith("**"):
-                        summary_part = summary_part.lstrip("*").strip()
                 else:
                     summary_part = summary_clean
                 para.add_run(item["company"]).bold = True
