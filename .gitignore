@@ -1,0 +1,27 @@
+# Prevent secrets and sensitive files from being uploaded
+.env
+secrets.toml
+.streamlit/secrets.toml
+.streamlit/config.toml
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+
+# OS/editor junk
+.DS_Store
+*.swp
+*.bak
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# Hugging Face build output
+output.log
+
+# Google App Engine generated folder
+appengine-generated/
