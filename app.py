@@ -24,15 +24,16 @@ if os.environ.get("HF_SPACE_ID"):
 
 # --- Actual App Starts Below ---
 
-import streamlit as st
 import json
+from datetime import datetime
+from io import BytesIO
+
+import streamlit as st
 from openai import OpenAI
 from docx import Document
 from docx.shared import Pt, RGBColor
-from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
-from datetime import datetime
-from io import BytesIO
+from docx.oxml.ns import qn
 
 # --- Load OpenAI credentials from Streamlit secrets ---
 api_key = st.secrets["OPENAI_API_KEY"]
