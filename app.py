@@ -1,3 +1,4 @@
+
 # Hugging Face healthcheck workaround
 import os
 
@@ -53,28 +54,32 @@ SECTORS = [
 def get_client():
     return OpenAI(api_key=api_key, project=project_id)
 
-# Clean GPT summary output
 def clean_summary_text(text):
-    # Remove unintended asterisks (bold artifacts)
-    text = text.replace("**", "").strip()
-    # Flatten line breaks
-    text = re.sub(r"\s*\n\s*", " ", text)
-    # Fix missing space in patterns like 2.6billion or 100million
+    # Remove markdown-style bold/italics/underscores
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"\*(.*?)\*", r"\1", text)
+    text = re.sub(r"_([^_]+)_", r"\1", text)
+    # Remove stray (Link) from GPT
+    text = re.sub(r"\(Link\)", "", text)
+    # Fix spacing between numbers and words (e.g. 2.6billion → 2.6 billion)
     text = re.sub(r"(\d)([A-Za-z])", r"\1 \2", text)
+    # Flatten newlines and trim whitespace
+    text = text.replace("\n", " ").replace("\r", " ")
+    text = re.sub(r"\s+", " ", text)
     return text.strip()
 
 def format_summary(company, summary_text):
-    summary_text = clean_summary_text(summary_text)
-    dash_index = summary_text.find("–")
+    summary_clean = clean_summary_text(summary_text)
+    dash_index = summary_clean.find("–")
     if dash_index == -1:
-        dash_index = summary_text.find("-")
+        dash_index = summary_clean.find("-")
     if dash_index != -1:
-        body = summary_text[dash_index + 1:].strip()
+        body = summary_clean[dash_index + 1:].strip()
         if body and not body[0].isupper():
             body = body[0].lower() + body[1:]
         return f"**{company}** – {body} (Link)"
     else:
-        return f"**{company}** – {summary_text} (Link)"
+        return f"**{company}** – {summary_clean} (Link)"
 
 def generate_summary(rns_text):
     client = get_client()
@@ -89,7 +94,7 @@ Editorial rules:
 - Begin the sentence after the dash in lowercase, unless it's a proper noun
 - Correctly capitalise initials in names (e.g. "J.T. Starzecki")
 - Include only strategic, financial, or operational business facts
-- End each summary with: (Link)
+DO NOT include (Link) at the end.
 
 RNS:
 {rns_text}
