@@ -53,18 +53,21 @@ def get_client():
     return OpenAI(api_key=api_key, project=project_id)
 
 def format_summary(company, summary_text):
-    dash_index = summary_text.find("–")
+    summary_clean = summary_text.replace("(Link)", "").strip()
+    while summary_clean.endswith("*"):
+        summary_clean = summary_clean[:-1].rstrip()
+    dash_index = summary_clean.find("–")
     if dash_index == -1:
-        dash_index = summary_text.find("-")
+        dash_index = summary_clean.find("-")
     if dash_index != -1:
-        body = summary_text[dash_index + 1:].strip()
+        body = summary_clean[dash_index + 1:].strip()
         if body.startswith("**"):
             body = body.lstrip("*").strip()
         if body and not body[0].isupper():
             body = body[0].lower() + body[1:]
         return f"**{company}** – {body} (Link)"
     else:
-        return f"**{company}** – {summary_text.strip()} (Link)"
+        return f"**{company}** – {summary_clean} (Link)"
 
 def generate_summary(rns_text):
     client = get_client()
@@ -145,15 +148,14 @@ def docx_export(summaries):
                 summary_clean = item["summary"].replace(" (Link)", "").strip()
                 dash_index = summary_clean.find("–")
                 if dash_index != -1:
-                    company_part = item["company"]
                     summary_part = summary_clean[dash_index + 1:].strip()
+                    while summary_part.endswith("*"):
+                        summary_part = summary_part[:-1].rstrip()
                     if summary_part.startswith("**"):
                         summary_part = summary_part.lstrip("*").strip()
                 else:
-                    company_part = item["company"]
                     summary_part = summary_clean
-
-                para.add_run(company_part).bold = True
+                para.add_run(item["company"]).bold = True
                 para.add_run(" – ")
                 para.add_run(summary_part + " ")
                 add_hyperlink(para, "(Link)", item["link"])
@@ -165,66 +167,3 @@ def docx_export(summaries):
 
 def today():
     return datetime.now().strftime("%Y-%m-%d")
-
-# --- Streamlit UI ---
-st.set_page_config(page_title="RNS Summariser Tool", layout="wide")
-st.title("📈 RNS Summariser Tool (Formatted Output)")
-st.empty()
-st.markdown("<!-- Hugging Face healthcheck passthrough -->")
-
-if "summaries" not in st.session_state:
-    st.session_state.summaries = []
-
-with st.form("rns_form"):
-    rns_text = st.text_area("Paste RNS Text", height=200)
-    company = st.text_input("Company Name")
-    link = st.text_input("RNS Link (URL)")
-    sector = st.selectbox("Sector", SECTORS)
-    submitted = st.form_submit_button("Summarise & Add")
-
-    if submitted:
-        if rns_text.strip() and company and link:
-            try:
-                raw_summary = generate_summary(rns_text)
-                st.session_state.summaries.append({
-                    "company": company,
-                    "link": link,
-                    "sector": sector,
-                    "summary": raw_summary
-                })
-                st.success(f"✅ Added summary for {company}")
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
-        else:
-            st.warning("Please fill in all fields.")
-
-if st.session_state.summaries:
-    st.subheader("Summarised Entries")
-    grouped = {sector: [] for sector in SECTORS}
-    for item in st.session_state.summaries:
-        grouped[item["sector"]].append(item)
-
-    for sector in SECTORS:
-        entries = sorted(grouped[sector], key=lambda x: x["company"])
-        if entries:
-            st.markdown(f"### {sector}")
-            for item in entries:
-                formatted = format_summary(item["company"], item["summary"])
-                st.markdown(formatted)
-                st.markdown("---")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.download_button(
-            "⬇️ Download as JSON",
-            data=json.dumps(st.session_state.summaries, indent=2),
-            file_name=f"rns_summaries_{today()}.json",
-            mime="application/json"
-        )
-    with col2:
-        st.download_button(
-            "⬇️ Download as Word (.docx)",
-            data=docx_export(st.session_state.summaries),
-            file_name=f"rns_summaries_{today()}.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
