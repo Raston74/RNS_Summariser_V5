@@ -67,9 +67,7 @@ def format_summary(company, summary_text):
         return f"**{company}** – {body}"
     else:
         summary_text = summary_text.replace("(Link)", "").strip()
-        return f"**{company}** – {summary_text}"
-    else:
-        return f"**{company}** – {summary_text.strip()} (Link)"
+        return f"**{company}** – {summary_text.strip()}"
 
 def generate_summary(rns_text):
     client = get_client()
@@ -84,7 +82,7 @@ Editorial rules:
 - Begin the sentence after the dash in lowercase, unless it's a proper noun
 - Correctly capitalise initials in names (e.g. "J.T. Starzecki")
 - Include only strategic, financial, or operational business facts
-- End each summary with: (Link)
+- Do not include any hyperlink or mention of '(Link)' in the summary.
 
 RNS:
 {rns_text}
