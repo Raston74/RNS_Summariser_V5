@@ -36,7 +36,6 @@ from docx.oxml import OxmlElement
 from datetime import datetime
 from io import BytesIO
 
-# --- Load OpenAI credentials from Streamlit secrets ---
 api_key = st.secrets["OPENAI_API_KEY"]
 project_id = st.secrets["OPENAI_PROJECT_ID"]
 MODEL = "gpt-4o"
@@ -55,16 +54,20 @@ def get_client():
     return OpenAI(api_key=api_key, project=project_id)
 
 def clean_summary_text(text):
-    # Remove markdown-style bold/italics/underscores
-    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
-    text = re.sub(r"\*(.*?)\*", r"\1", text)
-    text = re.sub(r"_([^_]+)_", r"\1", text)
-    # Remove stray (Link) from GPT
+    # Remove markdown
+    text = re.sub(r"\*\*(.*?)\*\*", r"", text)
+    text = re.sub(r"\*(.*?)\*", r"", text)
+    text = re.sub(r"_([^_]+)_", r"", text)
     text = re.sub(r"\(Link\)", "", text)
-    # Fix spacing between numbers and words (e.g. 2.6billion → 2.6 billion)
-    text = re.sub(r"(\d)([A-Za-z])", r"\1 \2", text)
-    # Flatten newlines and trim whitespace
-    text = text.replace("\n", " ").replace("\r", " ")
+
+    # Repeatedly break mashed tokens
+    for _ in range(3):
+        text = re.sub(r"(\d)([A-Za-z])", r" ", text)
+        text = re.sub(r"([a-z])([A-Z])", r" ", text)
+
+    text = text.replace("
+", " ").replace("
+", " ")
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
@@ -111,27 +114,21 @@ def add_hyperlink(paragraph, text, url):
     r_id = part.relate_to(url, 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink', is_external=True)
     hyperlink = OxmlElement('w:hyperlink')
     hyperlink.set(qn('r:id'), r_id)
-
     run = OxmlElement('w:r')
     rPr = OxmlElement('w:rPr')
-
     rStyle = OxmlElement('w:rStyle')
     rStyle.set(qn('w:val'), 'Hyperlink')
     rPr.append(rStyle)
-
     color = OxmlElement('w:color')
     color.set(qn('w:val'), '0000FF')
     rPr.append(color)
-
     underline = OxmlElement('w:u')
     underline.set(qn('w:val'), 'single')
     rPr.append(underline)
-
     run.append(rPr)
     t = OxmlElement('w:t')
     t.text = text
     run.append(t)
-
     hyperlink.append(run)
     paragraph._p.append(hyperlink)
 
@@ -141,11 +138,9 @@ def docx_export(summaries):
     font = style.font
     font.name = 'Arial'
     font.size = Pt(11)
-
     grouped = {sector: [] for sector in SECTORS}
     for item in summaries:
         grouped[item["sector"]].append(item)
-
     for sector in SECTORS:
         entries = sorted(grouped[sector], key=lambda x: x["company"])
         if entries:
@@ -154,7 +149,6 @@ def docx_export(summaries):
             run.bold = True
             run.underline = True
             run.font.color.rgb = RGBColor(0, 0, 0)
-
             for item in entries:
                 para = doc.add_paragraph()
                 summary_clean = clean_summary_text(item["summary"]).replace(" (Link)", "")
@@ -167,7 +161,6 @@ def docx_export(summaries):
                 para.add_run(" – ")
                 para.add_run(summary_part + " ")
                 add_hyperlink(para, "(Link)", item["link"])
-
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
@@ -176,7 +169,6 @@ def docx_export(summaries):
 def today():
     return datetime.now().strftime("%Y-%m-%d")
 
-# --- Streamlit UI ---
 st.set_page_config(page_title="RNS Summariser Tool", layout="wide")
 st.title("📈 RNS Summariser Tool (Formatted Output)")
 st.empty()
@@ -191,7 +183,6 @@ with st.form("rns_form"):
     link = st.text_input("RNS Link (URL)")
     sector = st.selectbox("Sector", SECTORS)
     submitted = st.form_submit_button("Summarise & Add")
-
     if submitted:
         if rns_text.strip() and company and link:
             try:
@@ -213,7 +204,6 @@ if st.session_state.summaries:
     grouped = {sector: [] for sector in SECTORS}
     for item in st.session_state.summaries:
         grouped[item["sector"]].append(item)
-
     for sector in SECTORS:
         entries = sorted(grouped[sector], key=lambda x: x["company"])
         if entries:
@@ -222,7 +212,6 @@ if st.session_state.summaries:
                 formatted = format_summary(item["company"], item["summary"])
                 st.markdown(formatted)
                 st.markdown("---")
-
     col1, col2 = st.columns(2)
     with col1:
         st.download_button(
