@@ -24,16 +24,15 @@ if os.environ.get("HF_SPACE_ID"):
 
 # --- Actual App Starts Below ---
 
-import json
-from datetime import datetime
-from io import BytesIO
-
 import streamlit as st
+import json
 from openai import OpenAI
 from docx import Document
 from docx.shared import Pt, RGBColor
-from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+from datetime import datetime
+from io import BytesIO
 
 # --- Load OpenAI credentials from Streamlit secrets ---
 api_key = st.secrets["OPENAI_API_KEY"]
@@ -53,25 +52,24 @@ SECTORS = [
 def get_client():
     return OpenAI(api_key=api_key, project=project_id)
 
-def clean_summary_text(text):
-    text = text.replace("\n", " ").replace("\r", " ").replace("\t", " ")
-    text = text.replace("\u202f", " ")  # Narrow no-break space
-    text = text.replace("\xa0", " ")    # Non-breaking space
-    text = text.replace("**", "").replace("*", "").strip()
-    return text
-
 def format_summary(company, summary_text):
-    summary_text = clean_summary_text(summary_text)
     dash_index = summary_text.find("–")
     if dash_index == -1:
         dash_index = summary_text.find("-")
     if dash_index != -1:
         body = summary_text[dash_index + 1:].strip()
+        if body.startswith("**"):
+            body = body.lstrip("*").strip()
+        if body.endswith("(Link)"):
+            body = body[:-6].strip()
         if body and not body[0].isupper():
             body = body[0].lower() + body[1:]
         return f"**{company}** – {body}"
     else:
-        return f"**{company}** – {summary_text.strip()}"
+        summary_text = summary_text.replace("(Link)", "").strip()
+        return f"**{company}** – {summary_text}"
+    else:
+        return f"**{company}** – {summary_text.strip()} (Link)"
 
 def generate_summary(rns_text):
     client = get_client()
@@ -149,14 +147,16 @@ def docx_export(summaries):
 
             for item in entries:
                 para = doc.add_paragraph()
-                cleaned = clean_summary_text(item["summary"])
-                dash_index = cleaned.find("–")
+                summary_clean = item["summary"].replace("(Link)", "").strip()
+                dash_index = summary_clean.find("–")
                 if dash_index != -1:
                     company_part = item["company"]
-                    summary_part = cleaned[dash_index + 1:].strip()
+                    summary_part = summary_clean[dash_index + 1:].strip()
+                    if summary_part.startswith("**"):
+                        summary_part = summary_part.lstrip("*").strip()
                 else:
                     company_part = item["company"]
-                    summary_part = cleaned
+                    summary_part = summary_clean
 
                 para.add_run(company_part).bold = True
                 para.add_run(" – ")
@@ -215,7 +215,7 @@ if st.session_state.summaries:
             st.markdown(f"### {sector}")
             for item in entries:
                 formatted = format_summary(item["company"], item["summary"])
-                st.markdown(formatted + " [(Link)](" + item["link"] + ")")
+                st.markdown(formatted)
                 st.markdown("---")
 
     col1, col2 = st.columns(2)
