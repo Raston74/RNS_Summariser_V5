@@ -27,7 +27,6 @@ if os.environ.get("HF_SPACE_ID"):
 
 import streamlit as st
 import json
-import re
 from openai import OpenAI
 from docx import Document
 from docx.shared import Pt, RGBColor
@@ -36,6 +35,7 @@ from docx.oxml import OxmlElement
 from datetime import datetime
 from io import BytesIO
 
+# --- Load OpenAI credentials from Streamlit secrets ---
 api_key = st.secrets["OPENAI_API_KEY"]
 project_id = st.secrets["OPENAI_PROJECT_ID"]
 MODEL = "gpt-4o"
@@ -54,35 +54,24 @@ def get_client():
     return OpenAI(api_key=api_key, project=project_id)
 
 def clean_summary_text(text):
-    # Remove markdown
-    text = re.sub(r"\*\*(.*?)\*\*", r"", text)
-    text = re.sub(r"\*(.*?)\*", r"", text)
-    text = re.sub(r"_([^_]+)_", r"", text)
-    text = re.sub(r"\(Link\)", "", text)
-
-    # Repeatedly break mashed tokens
-    for _ in range(3):
-        text = re.sub(r"(\d)([A-Za-z])", r" ", text)
-        text = re.sub(r"([a-z])([A-Z])", r" ", text)
-
-    text = text.replace("
-", " ").replace("
-", " ")
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
+    text = text.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+    text = text.replace("\u202f", " ")  # Narrow no-break space
+    text = text.replace("\xa0", " ")    # Non-breaking space
+    text = text.replace("**", "").replace("*", "").strip()
+    return text
 
 def format_summary(company, summary_text):
-    summary_clean = clean_summary_text(summary_text)
-    dash_index = summary_clean.find("–")
+    summary_text = clean_summary_text(summary_text)
+    dash_index = summary_text.find("–")
     if dash_index == -1:
-        dash_index = summary_clean.find("-")
+        dash_index = summary_text.find("-")
     if dash_index != -1:
-        body = summary_clean[dash_index + 1:].strip()
+        body = summary_text[dash_index + 1:].strip()
         if body and not body[0].isupper():
             body = body[0].lower() + body[1:]
         return f"**{company}** – {body} (Link)"
     else:
-        return f"**{company}** – {summary_clean} (Link)"
+        return f"**{company}** – {summary_text.strip()} (Link)"
 
 def generate_summary(rns_text):
     client = get_client()
@@ -97,7 +86,7 @@ Editorial rules:
 - Begin the sentence after the dash in lowercase, unless it's a proper noun
 - Correctly capitalise initials in names (e.g. "J.T. Starzecki")
 - Include only strategic, financial, or operational business facts
-DO NOT include (Link) at the end.
+- End each summary with: (Link)
 
 RNS:
 {rns_text}
@@ -107,28 +96,34 @@ RNS:
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
-    return clean_summary_text(response.choices[0].message.content.strip())
+    return response.choices[0].message.content.strip()
 
 def add_hyperlink(paragraph, text, url):
     part = paragraph.part
     r_id = part.relate_to(url, 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink', is_external=True)
     hyperlink = OxmlElement('w:hyperlink')
     hyperlink.set(qn('r:id'), r_id)
+
     run = OxmlElement('w:r')
     rPr = OxmlElement('w:rPr')
+
     rStyle = OxmlElement('w:rStyle')
     rStyle.set(qn('w:val'), 'Hyperlink')
     rPr.append(rStyle)
+
     color = OxmlElement('w:color')
     color.set(qn('w:val'), '0000FF')
     rPr.append(color)
+
     underline = OxmlElement('w:u')
     underline.set(qn('w:val'), 'single')
     rPr.append(underline)
+
     run.append(rPr)
     t = OxmlElement('w:t')
     t.text = text
     run.append(t)
+
     hyperlink.append(run)
     paragraph._p.append(hyperlink)
 
@@ -138,9 +133,11 @@ def docx_export(summaries):
     font = style.font
     font.name = 'Arial'
     font.size = Pt(11)
+
     grouped = {sector: [] for sector in SECTORS}
     for item in summaries:
         grouped[item["sector"]].append(item)
+
     for sector in SECTORS:
         entries = sorted(grouped[sector], key=lambda x: x["company"])
         if entries:
@@ -149,18 +146,23 @@ def docx_export(summaries):
             run.bold = True
             run.underline = True
             run.font.color.rgb = RGBColor(0, 0, 0)
+
             for item in entries:
                 para = doc.add_paragraph()
-                summary_clean = clean_summary_text(item["summary"]).replace(" (Link)", "")
-                dash_index = summary_clean.find("–")
+                cleaned = clean_summary_text(item["summary"].replace(" (Link)", "").strip())
+                dash_index = cleaned.find("–")
                 if dash_index != -1:
-                    summary_part = summary_clean[dash_index + 1:].strip()
+                    company_part = item["company"]
+                    summary_part = cleaned[dash_index + 1:].strip()
                 else:
-                    summary_part = summary_clean
-                para.add_run(item["company"]).bold = True
+                    company_part = item["company"]
+                    summary_part = cleaned
+
+                para.add_run(company_part).bold = True
                 para.add_run(" – ")
                 para.add_run(summary_part + " ")
                 add_hyperlink(para, "(Link)", item["link"])
+
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
@@ -169,6 +171,7 @@ def docx_export(summaries):
 def today():
     return datetime.now().strftime("%Y-%m-%d")
 
+# --- Streamlit UI ---
 st.set_page_config(page_title="RNS Summariser Tool", layout="wide")
 st.title("📈 RNS Summariser Tool (Formatted Output)")
 st.empty()
@@ -183,6 +186,7 @@ with st.form("rns_form"):
     link = st.text_input("RNS Link (URL)")
     sector = st.selectbox("Sector", SECTORS)
     submitted = st.form_submit_button("Summarise & Add")
+
     if submitted:
         if rns_text.strip() and company and link:
             try:
@@ -204,6 +208,7 @@ if st.session_state.summaries:
     grouped = {sector: [] for sector in SECTORS}
     for item in st.session_state.summaries:
         grouped[item["sector"]].append(item)
+
     for sector in SECTORS:
         entries = sorted(grouped[sector], key=lambda x: x["company"])
         if entries:
@@ -212,6 +217,7 @@ if st.session_state.summaries:
                 formatted = format_summary(item["company"], item["summary"])
                 st.markdown(formatted)
                 st.markdown("---")
+
     col1, col2 = st.columns(2)
     with col1:
         st.download_button(
